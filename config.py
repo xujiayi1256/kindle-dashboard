@@ -30,3 +30,6 @@ FONT_PATH = os.environ.get("FONT_PATH", "")
 
 # Display timezone
 TIMEZONE = os.environ.get("TZ", "Asia/Shanghai")
+
+# Theme: dark (black bg, white text) or light
+THEME = os.environ.get("THEME", "dark").lower()
