@@ -66,8 +66,8 @@ def draw_countdown_line(
     label = f"距离{name}"
     if is_estimate:
         label += "（农历估算）"
-    y = text_bottom(draw, x, y, label, label_font) + 6
-    return text_bottom(draw, x, y, f"{days} 天", number_font) + 14
+    y = text_bottom(draw, x, y, label, label_font) + 4
+    return text_bottom(draw, x, y, f"{days} 天", number_font) + 10
 
 
 def render_dashboard(data: DashboardData, output_path: Path) -> Path:
@@ -75,28 +75,50 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
     image = Image.new("L", (width, height), 255)
     draw = ImageDraw.Draw(image)
 
-    title_font = find_font(60)
-    subtitle_font = find_font(40)
-    section_font = find_font(38)
-    body_font = find_font(36)
-    small_font = find_font(28)
-    weather_font = find_font(56)
-    countdown_number_font = find_font(58)
-    rain_alert_font = find_font(42)
+    title_font = find_font(54)
+    subtitle_font = find_font(36)
+    section_font = find_font(34)
+    body_font = find_font(32)
+    small_font = find_font(26)
+    weather_font = find_font(50)
+    countdown_number_font = find_font(46)
+    rain_alert_font = find_font(36)
 
     margin = 48
     y = 40
 
     date_line = data.now.strftime("%Y年%m月%d日") + f"  {data.weekday}"
-    y = text_bottom(draw, margin, y, date_line, title_font) + 14
-    y = text_bottom(draw, margin, y, data.lunar_date, subtitle_font) + 10
+    y = text_bottom(draw, margin, y, date_line, title_font) + 12
+    y = text_bottom(draw, margin, y, data.lunar_date, subtitle_font) + 8
 
     if data.jieqi_today:
         jieqi_line = f"今日节气 · {data.jieqi_today}"
     else:
         jieqi_line = f"下一个节气 · {data.next_jieqi_name}（{data.next_jieqi_date}）"
-    y = text_bottom(draw, margin, y, jieqi_line, body_font) + 14
-    y = draw_divider(draw, y + 10, width, margin)
+    y = text_bottom(draw, margin, y, jieqi_line, body_font) + 12
+    y = draw_divider(draw, y + 8, width, margin)
+
+    y = text_bottom(draw, margin, y, config.CITY_NAME, weather_font) + 6
+    y = text_bottom(draw, margin, y, f"{data.temperature}  {data.weather_text}", weather_font) + 12
+    y = text_bottom(
+        draw,
+        margin,
+        y,
+        f"体感 {data.feels_like}   湿度 {data.humidity}",
+        body_font,
+    ) + 12
+
+    rain_font = rain_alert_font if data.rain_alert else body_font
+    y = text_bottom(draw, margin, y, data.rain_hint, rain_font) + 12
+
+    y = text_bottom(
+        draw,
+        margin,
+        y,
+        f"紫外线 {data.uv_level}   AQI {data.aqi} {data.aqi_category}",
+        body_font,
+    ) + 12
+    y = draw_divider(draw, y + 4, width, margin)
 
     y = draw_section_title(draw, margin, y, "倒计时", section_font)
     if data.countdowns:
@@ -113,30 +135,8 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
                 small_font,
             )
     else:
-        y = text_bottom(draw, margin + 8, y, "暂无即将到来的节日", body_font) + 14
-    y = draw_divider(draw, y + 6, width, margin)
-
-    y = text_bottom(draw, margin, y, config.CITY_NAME, weather_font) + 8
-    y = text_bottom(draw, margin, y, f"{data.temperature}  {data.weather_text}", weather_font) + 16
-    y = text_bottom(
-        draw,
-        margin,
-        y,
-        f"体感 {data.feels_like}   湿度 {data.humidity}",
-        body_font,
-    ) + 14
-
-    rain_font = rain_alert_font if data.rain_alert else body_font
-    y = text_bottom(draw, margin, y, data.rain_hint, rain_font) + 14
-
-    y = text_bottom(
-        draw,
-        margin,
-        y,
-        f"紫外线 {data.uv_level}   AQI {data.aqi} {data.aqi_category}",
-        body_font,
-    ) + 14
-    y = draw_divider(draw, y + 10, width, margin)
+        y = text_bottom(draw, margin + 8, y, "暂无即将到来的节日", body_font) + 12
+    y = draw_divider(draw, y + 4, width, margin)
 
     y = draw_section_title(draw, margin, y, "近期节假日", section_font)
     if data.upcoming_holidays:

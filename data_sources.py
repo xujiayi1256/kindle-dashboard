@@ -107,7 +107,15 @@ def build_countdowns(today: date, holidays: list[dict[str, Any]]) -> list[tuple[
         results.append(("春节", (spring_date - today).days, True))
 
     results.sort(key=lambda x: x[1])
-    return results[:3]
+
+    if not results:
+        return []
+
+    nearest_days = results[0][1]
+    # Hide countdowns much farther than the nearest holiday.
+    max_gap = 45
+    filtered = [item for item in results if item[1] <= nearest_days + max_gap]
+    return filtered[:2]
 
 
 def normalize_holiday_name(name: str) -> str:
