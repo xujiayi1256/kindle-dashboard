@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 from lunar_python import Lunar, Solar
@@ -35,6 +36,7 @@ class DashboardData:
     humidity: str
     rain_hint: str
     rain_alert: bool
+    tomorrow_weather: str
     uv_level: str
     aqi: str
     aqi_category: str
@@ -42,6 +44,10 @@ class DashboardData:
 
 
 WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+
+
+def now_in_shanghai() -> datetime:
+    return datetime.now(ZoneInfo(config.TIMEZONE))
 
 
 def _headers() -> dict[str, str]:
@@ -243,6 +249,34 @@ def fetch_weather() -> tuple[str, str, str, str]:
     )
 
 
+def _format_daily_weather(day: dict[str, Any]) -> str:
+    temp_min = day.get("tempMin", "--")
+    temp_max = day.get("tempMax", "--")
+    text_day = day.get("textDay", "")
+    text_night = day.get("textNight", "")
+    if text_day and text_night and text_day != text_night:
+        weather_text = f"{text_day}转{text_night}"
+    else:
+        weather_text = text_day or text_night or "--"
+    return f"明日  {temp_min}~{temp_max}°C  {weather_text}"
+
+
+def fetch_tomorrow_weather(today: date) -> str:
+    try:
+        data = _get("/v7/weather/3d", {"location": config.LOCATION_ID})
+        tomorrow = (today + timedelta(days=1)).isoformat()
+        for day in data.get("daily", []):
+            if day.get("fxDate") == tomorrow:
+                return _format_daily_weather(day)
+
+        daily = data.get("daily", [])
+        if len(daily) >= 2 and daily[0].get("fxDate") == today.isoformat():
+            return _format_daily_weather(daily[1])
+    except Exception:
+        pass
+    return "明日天气预报暂无"
+
+
 def fetch_rain_hint() -> str:
     try:
         data = _get(
@@ -315,7 +349,7 @@ def fetch_aqi() -> tuple[str, str]:
 
 
 def collect_dashboard_data() -> DashboardData:
-    now = datetime.now()
+    now = now_in_shanghai()
     today = now.date()
     holidays = load_holidays(today)
 
@@ -325,6 +359,7 @@ def collect_dashboard_data() -> DashboardData:
     weather_text, temperature, feels_like, humidity = fetch_weather()
     raw_rain_hint = fetch_rain_hint()
     rain_hint, rain_alert = build_rain_display(weather_text, raw_rain_hint)
+    tomorrow_weather = fetch_tomorrow_weather(today)
     uv_level = fetch_uv()
     aqi, aqi_category = fetch_aqi()
 
@@ -342,6 +377,7 @@ def collect_dashboard_data() -> DashboardData:
         humidity=humidity,
         rain_hint=rain_hint,
         rain_alert=rain_alert,
+        tomorrow_weather=tomorrow_weather,
         uv_level=uv_level,
         aqi=aqi,
         aqi_category=aqi_category,

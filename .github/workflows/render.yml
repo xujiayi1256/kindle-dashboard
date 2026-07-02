@@ -34,6 +34,7 @@ jobs:
 
       - name: Render dashboard
         env:
+          TZ: Asia/Shanghai
           QWEATHER_API_HOST: ${{ secrets.QWEATHER_API_HOST }}
           QWEATHER_JWT: ${{ secrets.QWEATHER_JWT }}
           QWEATHER_KID: ${{ secrets.QWEATHER_KID }}
@@ -50,6 +51,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No image changes to commit."
           else
-            git commit -m "Update dashboard $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git commit -m "Update dashboard $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M 上海时间')"
             git push
           fi

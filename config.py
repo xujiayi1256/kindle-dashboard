@@ -27,3 +27,6 @@ HOLIDAY_CDN = "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master"
 
 # Font (auto-detected if empty)
 FONT_PATH = os.environ.get("FONT_PATH", "")
+
+# Display timezone
+TIMEZONE = os.environ.get("TZ", "Asia/Shanghai")

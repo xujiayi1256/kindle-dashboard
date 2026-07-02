@@ -120,6 +120,7 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
         f"紫外线 {data.uv_level}   AQI {data.aqi} {data.aqi_category}",
         body_font,
     ) + 16
+    y = text_bottom(draw, margin, y, data.tomorrow_weather, body_font) + 16
     y = draw_divider(draw, y + 8, width, margin)
 
     y = draw_section_title(draw, margin, y, "节假日", section_font)
