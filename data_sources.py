@@ -91,28 +91,65 @@ def build_countdowns(today: date, holidays: list[dict[str, Any]]) -> list[tuple[
     return results[:3]
 
 
-def build_upcoming_holidays(today: date, holidays: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
-    upcoming: list[str] = []
-    makeup: list[str] = []
+def normalize_holiday_name(name: str) -> str:
+    for token in ("（休）", "(休)", "补班", "（班）", "(班)"):
+        name = name.replace(token, "")
+    return name.strip()
 
+
+def format_date_range(start: date, end: date) -> str:
+    if start == end:
+        return f"{start.month}月{start.day}日"
+    if start.month == end.month:
+        return f"{start.month}月{start.day}日-{end.day}日"
+    return f"{start.month}月{start.day}日-{end.month}月{end.day}日"
+
+
+def group_holiday_ranges(
+    holidays: list[dict[str, Any]],
+    today: date,
+    *,
+    off_day: bool,
+    limit: int,
+) -> list[str]:
+    items: list[dict[str, Any]] = []
     for item in holidays:
         holiday_date = date.fromisoformat(item["date"])
-        if holiday_date < today:
+        if holiday_date < today or holiday_date > today + timedelta(days=120):
             continue
-        if holiday_date > today + timedelta(days=120):
+        if bool(item.get("isOffDay")) != off_day:
             continue
+        items.append({"date": holiday_date, "name": normalize_holiday_name(item.get("name", ""))})
 
-        name = item.get("name", "")
-        weekday_short = "一二三四五六日"[holiday_date.weekday()]
-        line = f"{holiday_date.month}月{holiday_date.day}日 {name}"
-
-        if item.get("isOffDay"):
-            if len(upcoming) < 4:
-                upcoming.append(line)
+    items.sort(key=lambda x: x["date"])
+    groups: list[dict[str, Any]] = []
+    for item in items:
+        if (
+            groups
+            and groups[-1]["name"] == item["name"]
+            and (item["date"] - groups[-1]["end"]).days == 1
+        ):
+            groups[-1]["end"] = item["date"]
         else:
-            if len(makeup) < 2:
-                makeup.append(f"{holiday_date.month}月{holiday_date.day}日(周{weekday_short}) 补班")
+            groups.append({"name": item["name"], "start": item["date"], "end": item["date"]})
 
+    lines: list[str] = []
+    for group in groups[:limit]:
+        date_text = format_date_range(group["start"], group["end"])
+        day_count = (group["end"] - group["start"]).days + 1
+        if off_day and day_count > 1:
+            lines.append(f"{date_text} {group['name']}（休{day_count}天）")
+        elif off_day:
+            lines.append(f"{date_text} {group['name']}")
+        else:
+            weekday_short = "一二三四五六日"[group["start"].weekday()]
+            lines.append(f"{date_text}(周{weekday_short}) 补班")
+    return lines
+
+
+def build_upcoming_holidays(today: date, holidays: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    upcoming = group_holiday_ranges(holidays, today, off_day=True, limit=4)
+    makeup = group_holiday_ranges(holidays, today, off_day=False, limit=3)
     return upcoming, makeup
 
 
