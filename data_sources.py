@@ -12,6 +12,15 @@ import config
 
 
 @dataclass
+class HolidayItem:
+    name: str
+    days_until: int
+    date_range: str
+    off_days: int
+    is_estimate: bool
+
+
+@dataclass
 class DashboardData:
     now: datetime
     weekday: str
@@ -19,7 +28,7 @@ class DashboardData:
     jieqi_today: str
     next_jieqi_name: str
     next_jieqi_date: str
-    countdowns: list[tuple[str, int, bool]]  # name, days, is_lunar_estimate
+    holiday_items: list[HolidayItem]
     weather_text: str
     temperature: str
     feels_like: str
@@ -29,13 +38,10 @@ class DashboardData:
     uv_level: str
     aqi: str
     aqi_category: str
-    upcoming_holidays: list[str]
     makeup_workdays: list[str]
 
 
 WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-
-COUNTDOWN_TARGETS = ["春节", "国庆", "中秋", "元旦", "清明", "端午", "劳动节"]
 
 
 def _headers() -> dict[str, str]:
@@ -84,38 +90,75 @@ def get_lunar_spring_festival_date(today: date) -> date:
     return spring_date
 
 
-def build_countdowns(today: date, holidays: list[dict[str, Any]]) -> list[tuple[str, int, bool]]:
-    results: list[tuple[str, int, bool]] = []
-    seen: set[str] = set()
+def short_holiday_name(name: str) -> str:
+    name = normalize_holiday_name(name)
+    if name.endswith("节") and len(name) > 2:
+        return name[:-1]
+    return name
 
-    for target in COUNTDOWN_TARGETS:
-        for item in holidays:
-            name = item.get("name", "")
-            if target not in name or not item.get("isOffDay"):
-                continue
-            holiday_date = date.fromisoformat(item["date"])
-            if holiday_date < today:
-                continue
-            if target in seen:
-                break
-            seen.add(target)
-            results.append((target, (holiday_date - today).days, False))
-            break
 
-    if "春节" not in seen:
+def collect_off_day_groups(holidays: list[dict[str, Any]], today: date) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for item in holidays:
+        holiday_date = date.fromisoformat(item["date"])
+        if holiday_date < today or holiday_date > today + timedelta(days=120):
+            continue
+        if not item.get("isOffDay"):
+            continue
+        items.append({"date": holiday_date, "name": normalize_holiday_name(item.get("name", ""))})
+
+    items.sort(key=lambda x: x["date"])
+    groups: list[dict[str, Any]] = []
+    for item in items:
+        if (
+            groups
+            and groups[-1]["name"] == item["name"]
+            and (item["date"] - groups[-1]["end"]).days == 1
+        ):
+            groups[-1]["end"] = item["date"]
+        else:
+            groups.append({"name": item["name"], "start": item["date"], "end": item["date"]})
+    return groups
+
+
+def build_holiday_overview(
+    today: date, holidays: list[dict[str, Any]]
+) -> tuple[list[HolidayItem], list[str]]:
+    items: list[HolidayItem] = []
+    for group in collect_off_day_groups(holidays, today):
+        start = group["start"]
+        end = group["end"]
+        off_days = (end - start).days + 1
+        items.append(
+            HolidayItem(
+                name=short_holiday_name(group["name"]),
+                days_until=(start - today).days,
+                date_range=format_date_range(start, end),
+                off_days=off_days,
+                is_estimate=False,
+            )
+        )
+
+    if not any("春节" in item.name for item in items):
         spring_date = get_lunar_spring_festival_date(today)
-        results.append(("春节", (spring_date - today).days, True))
+        items.append(
+            HolidayItem(
+                name="春节",
+                days_until=(spring_date - today).days,
+                date_range=f"{spring_date.month}月{spring_date.day}日",
+                off_days=1,
+                is_estimate=True,
+            )
+        )
 
-    results.sort(key=lambda x: x[1])
+    items.sort(key=lambda x: x.days_until)
+    if items:
+        nearest_days = items[0].days_until
+        max_gap = 45
+        items = [item for item in items if item.days_until <= nearest_days + max_gap][:3]
 
-    if not results:
-        return []
-
-    nearest_days = results[0][1]
-    # Hide countdowns much farther than the nearest holiday.
-    max_gap = 45
-    filtered = [item for item in results if item[1] <= nearest_days + max_gap]
-    return filtered[:2]
+    makeup = group_holiday_ranges(holidays, today, off_day=False, limit=3)
+    return items, makeup
 
 
 def normalize_holiday_name(name: str) -> str:
@@ -173,11 +216,6 @@ def group_holiday_ranges(
             lines.append(f"{date_text}(周{weekday_short}) 补班")
     return lines
 
-
-def build_upcoming_holidays(today: date, holidays: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
-    upcoming = group_holiday_ranges(holidays, today, off_day=True, limit=4)
-    makeup = group_holiday_ranges(holidays, today, off_day=False, limit=3)
-    return upcoming, makeup
 
 
 def get_calendar_info(today: date) -> tuple[str, str, str, str]:
@@ -282,8 +320,7 @@ def collect_dashboard_data() -> DashboardData:
     holidays = load_holidays(today)
 
     lunar_date, jieqi_today, next_jieqi_name, next_jieqi_date = get_calendar_info(today)
-    countdowns = build_countdowns(today, holidays)
-    upcoming_holidays, makeup_workdays = build_upcoming_holidays(today, holidays)
+    holiday_items, makeup_workdays = build_holiday_overview(today, holidays)
 
     weather_text, temperature, feels_like, humidity = fetch_weather()
     raw_rain_hint = fetch_rain_hint()
@@ -298,7 +335,7 @@ def collect_dashboard_data() -> DashboardData:
         jieqi_today=jieqi_today,
         next_jieqi_name=next_jieqi_name,
         next_jieqi_date=next_jieqi_date,
-        countdowns=countdowns,
+        holiday_items=holiday_items,
         weather_text=weather_text,
         temperature=temperature,
         feels_like=feels_like,
@@ -308,6 +345,5 @@ def collect_dashboard_data() -> DashboardData:
         uv_level=uv_level,
         aqi=aqi,
         aqi_category=aqi_category,
-        upcoming_holidays=upcoming_holidays,
         makeup_workdays=makeup_workdays,
     )
