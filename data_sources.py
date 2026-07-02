@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 import requests
-from lunar_python import Solar
+from lunar_python import Lunar, Solar
 
 import auth
 import config
@@ -19,12 +19,13 @@ class DashboardData:
     jieqi_today: str
     next_jieqi_name: str
     next_jieqi_date: str
-    countdowns: list[tuple[str, int]]
+    countdowns: list[tuple[str, int, bool]]  # name, days, is_lunar_estimate
     weather_text: str
     temperature: str
     feels_like: str
     humidity: str
     rain_hint: str
+    rain_alert: bool
     uv_level: str
     aqi: str
     aqi_category: str
@@ -65,12 +66,26 @@ def load_holidays(today: date) -> list[dict[str, Any]]:
     years = {today.year, today.year + 1}
     days: list[dict[str, Any]] = []
     for year in sorted(years):
-        days.extend(fetch_holiday_year(year))
+        try:
+            days.extend(fetch_holiday_year(year))
+        except requests.RequestException:
+            continue
     return days
 
 
-def build_countdowns(today: date, holidays: list[dict[str, Any]]) -> list[tuple[str, int]]:
-    results: list[tuple[str, int]] = []
+def get_lunar_spring_festival_date(today: date) -> date:
+    """Next lunar 正月初一 (Spring Festival) by astronomical calendar."""
+    lunar_year = Solar.fromYmd(today.year, today.month, today.day).getLunar().getYear()
+    spring_solar = Lunar.fromYmd(lunar_year, 1, 1).getSolar()
+    spring_date = date(spring_solar.getYear(), spring_solar.getMonth(), spring_solar.getDay())
+    if spring_date < today:
+        spring_solar = Lunar.fromYmd(lunar_year + 1, 1, 1).getSolar()
+        spring_date = date(spring_solar.getYear(), spring_solar.getMonth(), spring_solar.getDay())
+    return spring_date
+
+
+def build_countdowns(today: date, holidays: list[dict[str, Any]]) -> list[tuple[str, int, bool]]:
+    results: list[tuple[str, int, bool]] = []
     seen: set[str] = set()
 
     for target in COUNTDOWN_TARGETS:
@@ -84,8 +99,12 @@ def build_countdowns(today: date, holidays: list[dict[str, Any]]) -> list[tuple[
             if target in seen:
                 break
             seen.add(target)
-            results.append((target, (holiday_date - today).days))
+            results.append((target, (holiday_date - today).days, False))
             break
+
+    if "春节" not in seen:
+        spring_date = get_lunar_spring_festival_date(today)
+        results.append(("春节", (spring_date - today).days, True))
 
     results.sort(key=lambda x: x[1])
     return results[:3]
@@ -195,11 +214,32 @@ def fetch_rain_hint() -> str:
         for hour in data.get("hourly", [])[:6]:
             text = hour.get("text", "")
             if "雨" in text:
-                return f"{hour.get('fxTime', '')[-5:]} 起{text}"
+                fx_time = hour.get("fxTime", "")
+                time_text = fx_time[11:16] if len(fx_time) >= 16 else fx_time[-5:]
+                return f"{time_text} 起{text}"
     except Exception:
         pass
 
     return "未来2小时无明显降水"
+
+
+def is_rainy(weather_text: str, rain_hint: str) -> bool:
+    if any(keyword in weather_text for keyword in ("雨", "雪", "霰")):
+        return True
+    if any(token in rain_hint for token in ("无明显降水", "无降水", "不会下雨", "雨就停了")):
+        return "雨" in rain_hint
+    return "雨" in rain_hint or "雪" in rain_hint
+
+
+def build_rain_display(weather_text: str, rain_hint: str) -> tuple[str, bool]:
+    rainy = is_rainy(weather_text, rain_hint)
+    if not rainy:
+        return rain_hint, False
+
+    hint = rain_hint
+    if "伞" not in hint:
+        hint = f"{hint}  ·  记得带伞"
+    return hint, True
 
 
 def fetch_uv() -> str:
@@ -208,7 +248,7 @@ def fetch_uv() -> str:
     if not daily:
         return "--"
     item = daily[0]
-    return f"{item.get('category', '--')} ({item.get('level', '--')}级)"
+    return str(item.get("category", "--"))
 
 
 def fetch_aqi() -> tuple[str, str]:
@@ -238,7 +278,8 @@ def collect_dashboard_data() -> DashboardData:
     upcoming_holidays, makeup_workdays = build_upcoming_holidays(today, holidays)
 
     weather_text, temperature, feels_like, humidity = fetch_weather()
-    rain_hint = fetch_rain_hint()
+    raw_rain_hint = fetch_rain_hint()
+    rain_hint, rain_alert = build_rain_display(weather_text, raw_rain_hint)
     uv_level = fetch_uv()
     aqi, aqi_category = fetch_aqi()
 
@@ -255,6 +296,7 @@ def collect_dashboard_data() -> DashboardData:
         feels_like=feels_like,
         humidity=humidity,
         rain_hint=rain_hint,
+        rain_alert=rain_alert,
         uv_level=uv_level,
         aqi=aqi,
         aqi_category=aqi_category,
