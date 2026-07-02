@@ -51,6 +51,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No image changes to commit."
           else
-            git commit -m "Update dashboard $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M 上海时间')"
+            git commit -m "Update dashboard $(TZ=Asia/Shanghai date +'%Y-%m-%d %H:%M')"
             git push
           fi
