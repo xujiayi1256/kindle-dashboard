@@ -2,8 +2,8 @@ name: Render Kindle Dashboard
 
 on:
   schedule:
-    # Every 30 minutes (UTC). 00/30 UTC = 08:30 / 09:00 Beijing, etc.
-    - cron: "0,30 * * * *"
+    # Off-peak minutes to reduce GitHub Actions schedule delays (:00/:30 are busiest).
+    - cron: "7,37 * * * *"
   workflow_dispatch:
 
 permissions:
