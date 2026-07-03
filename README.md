@@ -106,3 +106,6 @@ kindle-dashboard/
 ├── output/dashboard.png   # 生成的图片
 └── .github/workflows/render.yml
 ```
+https://github.xujiayi.me/kindle-dashboard/output/dashboard.png
+https://raw.githubusercontent.com/xujiayi1256/kindle-dashboard/main/output/dashboard.png
+
