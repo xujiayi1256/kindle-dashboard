@@ -108,10 +108,41 @@ def draw_centered_text(
     *,
     fill: int,
 ) -> None:
-    bbox = draw.textbbox((0, 0), text, font=font)
-    width = bbox[2] - bbox[0]
-    height = bbox[3] - bbox[1]
-    draw.text((cx - width // 2, cy - height // 2), text, fill=fill, font=font)
+    draw.text((cx, cy), text, fill=fill, font=font, anchor="mm")
+
+
+def draw_donut_inner_text(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    percent_text: str,
+    usage_text: str,
+    percent_font,
+    usage_font,
+    *,
+    text_color: int,
+    muted_color: int,
+) -> None:
+    spacing = 12
+    bbox_p = draw.textbbox((0, 0), percent_text, font=percent_font)
+    bbox_u = draw.textbbox((0, 0), usage_text, font=usage_font)
+    h_p = bbox_p[3] - bbox_p[1]
+    h_u = bbox_u[3] - bbox_u[1]
+
+    draw.text(
+        (cx, cy - (h_u + spacing) / 2),
+        percent_text,
+        fill=text_color,
+        font=percent_font,
+        anchor="mm",
+    )
+    draw.text(
+        (cx, cy + (h_p + spacing) / 2),
+        usage_text,
+        fill=muted_color,
+        font=usage_font,
+        anchor="mm",
+    )
 
 
 def draw_vpn_donut(
@@ -139,19 +170,19 @@ def draw_vpn_donut(
     percent_font = find_font(52)
     detail_font = find_font(28)
 
-    draw_centered_text(
-        draw, cx, cy - 18, f"{usage.used_percent:.1f}%", percent_font, fill=text_color
-    )
-    draw_centered_text(
+    draw_donut_inner_text(
         draw,
         cx,
-        cy + 30,
+        cy,
+        f"{usage.used_percent:.1f}%",
         f"{usage.used_gb:.1f} / {usage.limit_gb:.0f} GB",
+        percent_font,
         detail_font,
-        fill=muted_color,
+        text_color=text_color,
+        muted_color=muted_color,
     )
 
-    label_y = cy + radius + 36
+    label_y = cy + radius + 32
     draw_centered_text(
         draw,
         cx,
@@ -166,6 +197,17 @@ def draw_vpn_donut(
     else:
         reset_text = f"还有 {usage.days_until_reset} 天清零"
     draw_centered_text(draw, cx, label_y + 44, reset_text, detail_font, fill=muted_color)
+
+
+def vpn_widget_position(width: int, height: int, *, radius: int) -> tuple[int, int]:
+    margin = 48
+    below_ring = 32
+    line_gap = 44
+    caption_h = 28
+    tail = below_ring + line_gap + caption_h * 2
+    cx = width - margin - radius
+    cy = height - margin - radius - tail
+    return cx, cy
 
 
 def render_dashboard(data: DashboardData, output_path: Path) -> Path:
@@ -254,13 +296,15 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
             y = text_bottom(draw, margin + 8, y, f"· {line}", detail_font, fill=text_color) + 10
 
     if data.vpn_usage is not None:
+        vpn_radius = 140
+        vpn_cx, vpn_cy = vpn_widget_position(width, height, radius=vpn_radius)
         draw_vpn_donut(
             draw,
             data.vpn_usage,
-            cx=width - 220,
-            cy=820,
-            radius=150,
-            thickness=24,
+            cx=vpn_cx,
+            cy=vpn_cy,
+            radius=vpn_radius,
+            thickness=22,
             colors=colors,
         )
 
