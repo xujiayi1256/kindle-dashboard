@@ -40,6 +40,7 @@ jobs:
           QWEATHER_KID: ${{ secrets.QWEATHER_KID }}
           QWEATHER_PROJECT_ID: ${{ secrets.QWEATHER_PROJECT_ID }}
           QWEATHER_PRIVATE_KEY: ${{ secrets.QWEATHER_PRIVATE_KEY }}
+          VPN_API_URL: ${{ secrets.VPN_API_URL }}
           FONT_PATH: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
         run: python render.py
 

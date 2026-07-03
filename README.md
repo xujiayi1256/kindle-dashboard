@@ -11,6 +11,7 @@
 - 空气质量 AQI
 - 紫外线指数
 - 国务院节假日与调休提醒
+- VPN 流量圆环图（Just My Socks，可选）
 
 ## 本地运行
 
@@ -56,6 +57,7 @@ git push -u origin main
 | `QWEATHER_KID` | JWT 凭据 ID |
 | `QWEATHER_PROJECT_ID` | 项目 ID（JWT 的 `sub`） |
 | `QWEATHER_PRIVATE_KEY` | Ed25519 私钥全文（PEM 格式，换行保留） |
+| `VPN_API_URL` | （可选）Just My Socks 流量 API 完整 URL，含 `service` 和 `id` 参数 |
 
 > **推荐用 KID + 私钥自动生成 JWT**，因为 JWT 有效期短，适合 GitHub Actions 定时任务。  
 > 也可临时设置 `QWEATHER_JWT`（手动生成的 token），但过期后需重新更新 Secret。

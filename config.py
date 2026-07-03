@@ -33,3 +33,6 @@ TIMEZONE = os.environ.get("TZ", "Asia/Shanghai")
 
 # Theme: dark (black bg, white text) or light
 THEME = os.environ.get("THEME", "dark").lower()
+
+# Just My Socks bandwidth counter API (optional; full URL with service & id)
+VPN_API_URL = os.environ.get("VPN_API_URL", "").strip()

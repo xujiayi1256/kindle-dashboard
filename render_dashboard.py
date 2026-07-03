@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 import config
-from data_sources import DashboardData, HolidayItem
+from data_sources import DashboardData, HolidayItem, VpnUsage
 
 
 def theme_colors() -> dict[str, int]:
@@ -64,9 +64,16 @@ def draw_section_title(
 
 
 def draw_divider(
-    draw: ImageDraw.ImageDraw, y: int, width: int, margin: int, *, fill: int
+    draw: ImageDraw.ImageDraw,
+    y: int,
+    width: int,
+    margin: int,
+    *,
+    fill: int,
+    right_x: int | None = None,
 ) -> int:
-    draw.line((margin, y, width - margin, y), fill=fill, width=2)
+    end_x = right_x if right_x is not None else width - margin
+    draw.line((margin, y, end_x, y), fill=fill, width=2)
     return y + 36
 
 
@@ -92,6 +99,75 @@ def draw_holiday_item(
     return text_bottom(draw, x, y, detail, detail_font, fill=fill) + 20
 
 
+def draw_centered_text(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    cy: int,
+    text: str,
+    font,
+    *,
+    fill: int,
+) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    draw.text((cx - width // 2, cy - height // 2), text, fill=fill, font=font)
+
+
+def draw_vpn_donut(
+    draw: ImageDraw.ImageDraw,
+    usage: VpnUsage,
+    *,
+    cx: int,
+    cy: int,
+    radius: int,
+    thickness: int,
+    colors: dict[str, int],
+) -> None:
+    text_color = colors["text"]
+    muted_color = colors["muted"]
+    ring_bg = colors["divider"]
+    ring_used = colors["text"] if config.THEME == "dark" else 30
+
+    bbox = (cx - radius, cy - radius, cx + radius, cy + radius)
+    draw.ellipse(bbox, outline=ring_bg, width=thickness)
+
+    if usage.used_percent > 0:
+        sweep = max(usage.used_percent / 100 * 360, 2)
+        draw.arc(bbox, start=270, end=270 + sweep, fill=ring_used, width=thickness)
+
+    percent_font = find_font(52)
+    detail_font = find_font(28)
+
+    draw_centered_text(
+        draw, cx, cy - 18, f"{usage.used_percent:.1f}%", percent_font, fill=text_color
+    )
+    draw_centered_text(
+        draw,
+        cx,
+        cy + 30,
+        f"{usage.used_gb:.1f} / {usage.limit_gb:.0f} GB",
+        detail_font,
+        fill=muted_color,
+    )
+
+    label_y = cy + radius + 36
+    draw_centered_text(
+        draw,
+        cx,
+        label_y,
+        f"剩余 {usage.remaining_gb:.1f} GB",
+        detail_font,
+        fill=muted_color,
+    )
+
+    if usage.days_until_reset == 0:
+        reset_text = "今日清零"
+    else:
+        reset_text = f"还有 {usage.days_until_reset} 天清零"
+    draw_centered_text(draw, cx, label_y + 44, reset_text, detail_font, fill=muted_color)
+
+
 def render_dashboard(data: DashboardData, output_path: Path) -> Path:
     width, height = config.WIDTH, config.HEIGHT
     colors = theme_colors()
@@ -111,6 +187,7 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
     rain_alert_font = find_font(40)
 
     margin = 48
+    divider_right = 580 if data.vpn_usage is not None else None
     y = 44
 
     date_line = data.now.strftime("%Y年%m月%d日") + f"  {data.weekday}"
@@ -122,7 +199,9 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
     else:
         jieqi_line = f"下一个节气 · {data.next_jieqi_name}（{data.next_jieqi_date}）"
     y = text_bottom(draw, margin, y, jieqi_line, body_font, fill=text_color) + 16
-    y = draw_divider(draw, y + 10, width, margin, fill=divider_color)
+    y = draw_divider(
+        draw, y + 10, width, margin, fill=divider_color, right_x=divider_right
+    )
 
     y = text_bottom(draw, margin, y, config.CITY_NAME, weather_font, fill=text_color) + 8
     y = text_bottom(
@@ -149,7 +228,9 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
         fill=text_color,
     ) + 16
     y = text_bottom(draw, margin, y, data.tomorrow_weather, body_font, fill=text_color) + 16
-    y = draw_divider(draw, y + 8, width, margin, fill=divider_color)
+    y = draw_divider(
+        draw, y + 8, width, margin, fill=divider_color, right_x=divider_right
+    )
 
     y = draw_section_title(draw, margin, y, "节假日", section_font, fill=text_color)
     if data.holiday_items:
@@ -171,6 +252,17 @@ def render_dashboard(data: DashboardData, output_path: Path) -> Path:
         y = text_bottom(draw, margin + 8, y, "调休提醒", detail_font, fill=text_color) + 10
         for line in data.makeup_workdays:
             y = text_bottom(draw, margin + 8, y, f"· {line}", detail_font, fill=text_color) + 10
+
+    if data.vpn_usage is not None:
+        draw_vpn_donut(
+            draw,
+            data.vpn_usage,
+            cx=width - 220,
+            cy=820,
+            radius=150,
+            thickness=24,
+            colors=colors,
+        )
 
     updated = data.now.strftime("更新于 %m月%d日 %H:%M")
     draw.text((margin, height - 72), updated, fill=muted_color, font=detail_font)

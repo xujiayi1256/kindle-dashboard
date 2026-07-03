@@ -13,6 +13,18 @@ import config
 
 
 @dataclass
+class VpnUsage:
+    used_bytes: int
+    limit_bytes: int
+    reset_day: int
+    days_until_reset: int
+    used_gb: float
+    limit_gb: float
+    remaining_gb: float
+    used_percent: float
+
+
+@dataclass
 class HolidayItem:
     name: str
     days_until: int
@@ -41,6 +53,7 @@ class DashboardData:
     aqi: str
     aqi_category: str
     makeup_workdays: list[str]
+    vpn_usage: VpnUsage | None
 
 
 WEEKDAYS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -331,6 +344,75 @@ def fetch_uv() -> str:
     return str(item.get("category", "--"))
 
 
+def format_decimal_gb(byte_count: int) -> float:
+    return byte_count / 1_000_000_000
+
+
+def days_until_reset(today: date, reset_day: int) -> int:
+    if not 1 <= reset_day <= 31:
+        return 0
+
+    try:
+        candidate = today.replace(day=reset_day)
+    except ValueError:
+        candidate = None
+
+    if candidate is not None and candidate >= today:
+        return (candidate - today).days
+
+    year = today.year
+    month = today.month + 1
+    if month > 12:
+        month = 1
+        year += 1
+
+    for _ in range(24):
+        try:
+            reset_date = date(year, month, reset_day)
+            return (reset_date - today).days
+        except ValueError:
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+
+    return 0
+
+
+def fetch_vpn_usage(today: date) -> VpnUsage | None:
+    if not config.VPN_API_URL:
+        return None
+
+    try:
+        response = requests.get(config.VPN_API_URL, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        used_bytes = int(data["bw_counter_b"])
+        limit_bytes = int(data["monthly_bw_limit_b"])
+        reset_day = int(data["bw_reset_day_of_month"])
+    except (requests.RequestException, KeyError, TypeError, ValueError):
+        return None
+
+    if limit_bytes <= 0:
+        return None
+
+    used_gb = format_decimal_gb(used_bytes)
+    limit_gb = format_decimal_gb(limit_bytes)
+    remaining_gb = max(format_decimal_gb(limit_bytes - used_bytes), 0.0)
+    used_percent = min(used_bytes / limit_bytes * 100, 100.0)
+
+    return VpnUsage(
+        used_bytes=used_bytes,
+        limit_bytes=limit_bytes,
+        reset_day=reset_day,
+        days_until_reset=days_until_reset(today, reset_day),
+        used_gb=used_gb,
+        limit_gb=limit_gb,
+        remaining_gb=remaining_gb,
+        used_percent=used_percent,
+    )
+
+
 def fetch_aqi() -> tuple[str, str]:
     data = _get(f"/airquality/v1/current/{config.LATITUDE}/{config.LONGITUDE}")
     indexes = data.get("indexes", [])
@@ -362,6 +444,7 @@ def collect_dashboard_data() -> DashboardData:
     tomorrow_weather = fetch_tomorrow_weather(today)
     uv_level = fetch_uv()
     aqi, aqi_category = fetch_aqi()
+    vpn_usage = fetch_vpn_usage(today)
 
     return DashboardData(
         now=now,
@@ -382,4 +465,5 @@ def collect_dashboard_data() -> DashboardData:
         aqi=aqi,
         aqi_category=aqi_category,
         makeup_workdays=makeup_workdays,
+        vpn_usage=vpn_usage,
     )
